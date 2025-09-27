@@ -4,6 +4,12 @@ ChatBot Caso de Estudio (Seguros) - Streamlit
 Cargado desde CSV (GitHub o local)
 """
 
+# -*- coding: utf-8 -*-
+"""
+ChatBot Caso de Estudio (Seguros) - Streamlit
+Cargado desde CSV (GitHub o local)
+"""
+
 import os
 from datetime import datetime
 import numpy as np
@@ -12,29 +18,34 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
+import urllib.request
 
 # ------------------------------
 # Configuración / Carga de archivo
 # ------------------------------
 CSV_FILE_LOCAL = r"C:\Users\Sala_\Downloads\casodeestudio.csv"
-CSV_FILE_GITHUB = "https://raw.githubusercontent.com/usuario/repositorio/main/casodeestudio.csv"  # reemplazar URL
+CSV_FILE_GITHUB = "https://raw.githubusercontent.com/usuario/repositorio/main/casodeestudio.csv"  # reemplazar URL correcta
 
-try:
-    if os.path.exists(CSV_FILE_LOCAL):
-        df_raw = pd.read_csv(CSV_FILE_LOCAL)
-        st.success(f"✅ Base cargada desde local: {CSV_FILE_LOCAL}")
-    else:
-        st.info("📡 Intentando cargar CSV desde GitHub...")
-        try:
-            df_raw = pd.read_csv(CSV_FILE_GITHUB)
-            st.success("✅ Base cargada correctamente desde GitHub")
-        except Exception as e:
-            st.error(f"⚠️ No se pudo cargar el CSV desde GitHub: {e}")
-            st.stop()
-    st.dataframe(df_raw.astype(str), use_container_width=True)
-except Exception as e:
-    st.error(f"⚠️ Error al cargar CSV local: {e}")
-    st.stop()
+# Intentar cargar CSV
+df_raw = None
+if os.path.exists(CSV_FILE_LOCAL):
+    st.success(f"✅ CSV cargado desde archivo local: {CSV_FILE_LOCAL}")
+    df_raw = pd.read_csv(CSV_FILE_LOCAL)
+else:
+    st.info("📡 Intentando cargar CSV desde GitHub...")
+    try:
+        with urllib.request.urlopen(CSV_FILE_GITHUB) as response:
+            df_raw = pd.read_csv(response)
+        st.success("✅ CSV cargado correctamente desde GitHub")
+    except Exception as e:
+        st.error(f"⚠️ No se pudo cargar el CSV desde GitHub: {e}")
+        st.stop()
+
+# Mostrar preview del CSV
+st.dataframe(df_raw.astype(str), use_container_width=True)
+
+# ------------------------------
+# Resto del script: preparación, FAQ, NLP y dashboard
 
 # ------------------------------
 # Helpers de formato y parsing
