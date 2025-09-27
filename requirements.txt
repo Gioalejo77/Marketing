@@ -1,9 +1,2 @@
 import os
 from datetime import datetime
-
-import numpy
-import pandas
-import streamlit
-import matplotlib.pyplot
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.neighbors import NearestNeighbors
