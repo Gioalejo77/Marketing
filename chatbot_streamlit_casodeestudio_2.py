@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ChatBot Caso de Estudio (Seguros) - Streamlit
-Cargado desde CSV (GitHub o local)
-"""
-
-# -*- coding: utf-8 -*-
-"""
-ChatBot Caso de Estudio (Seguros) - Streamlit
-Cargado desde CSV (GitHub o local)
+Carga CSV local (no usa GitHub)
 """
 
 import os
@@ -18,38 +12,28 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
-import urllib.request
 
 # ------------------------------
 # Configuración / Carga de archivo
 # ------------------------------
 CSV_FILE_LOCAL = r"C:\Users\Sala_\Downloads\casodeestudio.csv"
-CSV_FILE_GITHUB = "https://raw.githubusercontent.com/usuario/repositorio/main/casodeestudio.csv"  # reemplazar URL correcta
 
-# Intentar cargar CSV
-df_raw = None
-if os.path.exists(CSV_FILE_LOCAL):
-    st.success(f"✅ CSV cargado desde archivo local: {CSV_FILE_LOCAL}")
-    df_raw = pd.read_csv(CSV_FILE_LOCAL)
-else:
-    st.info("📡 Intentando cargar CSV desde GitHub...")
-    try:
-        with urllib.request.urlopen(CSV_FILE_GITHUB) as response:
-            df_raw = pd.read_csv(response)
-        st.success("✅ CSV cargado correctamente desde GitHub")
-    except Exception as e:
-        st.error(f"⚠️ No se pudo cargar el CSV desde GitHub: {e}")
+try:
+    if os.path.exists(CSV_FILE_LOCAL):
+        df_raw = pd.read_csv(CSV_FILE_LOCAL)
+        st.success("✅ Base cargada correctamente desde archivo local")
+        st.dataframe(df_raw.astype(str), use_container_width=True)
+    else:
+        st.error(f"⚠️ No se encontró el archivo local: {CSV_FILE_LOCAL}")
         st.stop()
-
-# Mostrar preview del CSV
-st.dataframe(df_raw.astype(str), use_container_width=True)
-
-# ------------------------------
-# Resto del script: preparación, FAQ, NLP y dashboard
+except Exception as e:
+    st.error(f"⚠️ Error al cargar el CSV: {e}")
+    st.stop()
 
 # ------------------------------
 # Helpers de formato y parsing
 # ------------------------------
+
 def money(x, currency="$", decimals=0):
     try:
         return f"{currency}{x:,.{decimals}f}"
@@ -65,8 +49,12 @@ def pct(x, decimals=1):
 def coalesce_pandas(x, fallback):
     if x is None:
         return fallback
-    if isinstance(x, (pd.DataFrame, pd.Series)) and x.empty:
-        return fallback
+    if isinstance(x, (pd.DataFrame, pd.Series)):
+        try:
+            if x.empty:
+                return fallback
+        except Exception:
+            return fallback
     return x
 
 def parse_effective_to_date(series: pd.Series) -> pd.Series:
@@ -88,6 +76,7 @@ def parse_effective_to_date(series: pd.Series) -> pd.Series:
 # ------------------------------
 # Limpieza principal
 # ------------------------------
+
 def prepare_df(df_in: pd.DataFrame) -> pd.DataFrame:
     df = df_in.copy()
     df.columns = [c.strip() for c in df.columns]
@@ -111,12 +100,12 @@ def prepare_df(df_in: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-# Preparar DataFrame
+
 df = prepare_df(df_raw)
 
-# ------------------------------
-# Sidebar filtros
-# ------------------------------
+# ==========================================================
+#  Sidebar (solo afecta gráficas)
+# ==========================================================
 st.sidebar.header("🔍 Filtros (solo gráficas)")
 state_sel = st.sidebar.multiselect("Estado", options=sorted(df["State"].dropna().unique()) if "State" in df.columns else [])
 channel_sel = st.sidebar.multiselect("Canal de Venta", options=sorted(df["Sales Channel"].dropna().unique()) if "Sales Channel" in df.columns else [])
@@ -136,9 +125,10 @@ def df_for_charts(base: pd.DataFrame) -> pd.DataFrame:
     return dfx
 
 # ------------------------------
-# Guardar interacción
+# Guardar conversaciones
 # ------------------------------
-EXCEL_FILE = "interacciones_chatbot.xlsx"
+EXCEL_FILE = r"chatbot_historial.xlsx"
+
 def save_interaction(user_msg, bot_response):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_new = pd.DataFrame({"timestamp": [timestamp], "usuario": [user_msg], "bot": [bot_response]})
@@ -153,9 +143,16 @@ def save_interaction(user_msg, bot_response):
     df_final.to_excel(EXCEL_FILE, index=False)
 
 # ------------------------------
-# Métricas auxiliares y FAQ (se mantienen como en tu script)
+# Métricas auxiliares y FAQ
 # ------------------------------
-# ... Aquí va todo el resto de funciones de métricas, FAQ, NLP y dashboard sin cambios ...
+# (Se mantiene igual que tu script original, sin cambios)
+# ... Aquí irían las funciones de _top_margin_by, _acceptance_by_offer, _format_top_margin_lines, faq_generators, training_phrases, predict_intent ...
+
+# ------------------------------
+# DASHBOARD: 3 gráficas
+# ------------------------------
+# (Se mantiene igual que tu script original, sin cambios)
+# ... Aquí iría la función draw_dashboard(df_filtered) ...
 
 # ------------------------------
 # Interfaz Streamlit
@@ -174,7 +171,6 @@ if user_input:
         response = faq_generators[intent](df)
     else:
         response = "❓ No entendí tu consulta, por favor intenta con otra formulación."
-
     save_interaction(user_input, response)
     st.session_state["history"].append((user_input, response))
 
@@ -183,6 +179,6 @@ for user_msg, bot_msg in st.session_state["history"]:
     st.markdown(f"🤖 **Bot:** {bot_msg}")
     st.divider()
 
-# Mostrar dashboard
+# Mostrar gráficas con filtros aplicados
 df_charts = df_for_charts(df)
 draw_dashboard(df_charts)
