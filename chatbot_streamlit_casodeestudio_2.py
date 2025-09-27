@@ -1,38 +1,32 @@
 # -*- coding: utf-8 -*-
 """
 ChatBot Caso de Estudio (Seguros) - Streamlit
-Carga CSV mediante upload (evita rutas locales o GitHub)
+Carga CSV desde GitHub
 """
 
-import os
-from datetime import datetime
-import numpy as np
 import pandas as pd
+import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
+from datetime import datetime
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
 
-# ===================== Configuración =====================
-st.set_page_config(page_title="ChatBot Caso Seguros", page_icon="🚗", layout="wide")
+# ------------------------------
+# Configuración / Carga de CSV desde GitHub
+# ------------------------------
+CSV_FILE_GITHUB = "https://raw.githubusercontent.com/Gioalejo77/Marketing/main/casodeestudio.csv"
 
-# ===================== Carga de CSV =====================
-st.sidebar.header("Carga de archivo CSV")
-uploaded_file = st.sidebar.file_uploader("Selecciona tu archivo CSV", type="csv")
-
-if uploaded_file is not None:
-    try:
-        df_raw = pd.read_csv(uploaded_file)
-        st.success("✅ CSV cargado correctamente")
-        st.dataframe(df_raw.astype(str), use_container_width=True)
-    except Exception as e:
-        st.error(f"⚠️ No se pudo cargar el CSV: {e}")
-        st.stop()
-else:
-    st.warning("⚠️ No se ha cargado ningún CSV.")
+try:
+    df_raw = pd.read_csv(CSV_FILE_GITHUB)
+    st.success("✅ CSV cargado correctamente desde GitHub")
+    st.dataframe(df_raw.head(), use_container_width=True)
+except Exception as e:
+    st.error(f"⚠️ No se pudo cargar el CSV desde GitHub: {e}")
     st.stop()
 
-# ===================== Helpers de formato =====================
+# ------------------------------
+# Helpers de formato y parsing
+# ------------------------------
 def money(x, currency="$", decimals=0):
     try:
         return f"{currency}{x:,.{decimals}f}"
@@ -72,7 +66,9 @@ def parse_effective_to_date(series: pd.Series) -> pd.Series:
         dt.loc[mask] = pd.to_datetime(s_str.loc[mask], errors="coerce")
     return dt
 
-# ===================== Limpieza principal =====================
+# ------------------------------
+# Limpieza principal
+# ------------------------------
 def prepare_df(df_in: pd.DataFrame) -> pd.DataFrame:
     df = df_in.copy()
     df.columns = [c.strip() for c in df.columns]
@@ -96,11 +92,14 @@ def prepare_df(df_in: pd.DataFrame) -> pd.DataFrame:
               "Vehicle Class", "Vehicle Size", "Response", "Renew Offer Type", "State"]:
         if c in df.columns:
             df[c] = df[c].astype("category")
+
     return df
 
 df = prepare_df(df_raw)
 
-# ===================== Sidebar filtros =====================
+# ==========================================================
+# Sidebar (filtros para gráficas)
+# ==========================================================
 st.sidebar.header("🔍 Filtros (solo gráficas)")
 state_sel = st.sidebar.multiselect(
     "Estado",
@@ -131,7 +130,9 @@ def df_for_charts(base: pd.DataFrame) -> pd.DataFrame:
         dfx = dfx[dfx["Vehicle Class"].isin(vehicle_sel)]
     return dfx
 
-# ===================== Métricas y FAQ =====================
+# ------------------------------
+# Funciones de métricas
+# ------------------------------
 def _top_margin_by(df_in, group_col, top_k=3):
     if group_col not in df_in.columns:
         return None
@@ -163,25 +164,36 @@ def _format_top_margin_lines(top: pd.DataFrame) -> str:
         )
     return "\n".join(lines)
 
-# ===================== Entrenamiento NLP =====================
-training_phrases = {
-    "coberturas": ["oportunidades por tipo de cobertura", "qué cobertura genera mejor margen"],
-    "vigencia": ["picos de altas por mes", "cohortes por fecha de inicio"],
-    "pago_mensual": ["clientes con prima alta para ajuste", "mejorar pricing mensual"],
-    "clv": ["segmentación por CLV", "cómo mejorar el CLV"],
-    "num_polizas": ["oportunidades de cross sell", "clientes con una sola póliza"],
-    "reclamos": ["hotspots de siniestros", "frecuencia y severidad por estado"],
-    "quejas": ["reducir quejas abiertas", "priorizar acciones de servicio"],
-    "canales": ["qué canal vende mejor con buen margen", "desempeño por canal"],
-    "vehiculo": ["pricing por clase de vehículo", "ajustar tarifas por vehículo"],
-    "renovacion": ["mejor oferta de renovación", "tasa de aceptación por oferta"]
+# ------------------------------
+# FAQ dinámico
+# ------------------------------
+faq_generators = {
+    "coberturas": lambda df_in: (
+        (lambda top:
+            "🛡️ **Coberturas con mejor margen estimado (prima - reclamos)**:\n"
+            + _format_top_margin_lines(top)
+        )(coalesce_pandas(_top_margin_by(df_in, "Coverage"), pd.DataFrame()))
+    ),
+    # Agregar otros intents según tu script original...
 }
 
-X, y_list = [], []
+# ------------------------------
+# Training phrases y NLP
+# ------------------------------
+training_phrases = {
+    "coberturas": [
+        "oportunidades por tipo de cobertura",
+        "cómo mejorar el mix de coberturas",
+        "migrar clientes a premium o extended",
+        "qué cobertura genera mejor margen"
+    ]
+}
+
+X, y = [], []
 for intent, phrases in training_phrases.items():
     for phrase in phrases:
         X.append(phrase)
-        y_list.append(intent)
+        y.append(intent)
 
 vectorizer = TfidfVectorizer()
 X_vec = vectorizer.fit_transform(X)
@@ -190,56 +202,52 @@ model = NearestNeighbors(n_neighbors=1, metric="cosine").fit(X_vec)
 def predict_intent(user_input: str):
     user_vec = vectorizer.transform([user_input])
     dist, idx = model.kneighbors(user_vec)
-    intent = y_list[idx[0][0]]
+    intent = y[idx[0][0]]
     confidence = 1 - dist[0][0]
     return intent if confidence >= 0.5 else None
 
-# ===================== Dashboard =====================
+# ------------------------------
+# Dashboard (3 gráficas)
+# ------------------------------
 def draw_dashboard(df_filtered: pd.DataFrame):
     st.header("📊 Panel (3 gráficas) — Segmentado por filtros")
-
     if df_filtered.empty:
         st.info("No hay datos con los filtros seleccionados.")
         return
-
     # 1) Prima mensual promedio por cobertura
-    st.subheader("1) Prima mensual promedio por cobertura")
     if "Monthly Premium Auto" in df_filtered.columns and "Coverage" in df_filtered.columns:
-        g1 = df_filtered.groupby("Coverage", observed=True)["Monthly Premium Auto"].mean().sort_values(ascending=False)
+        g1 = df_filtered.groupby("Coverage", observed=True)["Monthly Premium Auto"].mean().sort_values(ascending=False).round(0)
         st.bar_chart(g1)
-    else:
-        st.info("No se encontraron columnas 'Monthly Premium Auto' y/o 'Coverage'.")
-
-    # 2) Total de reclamos por estado (Top 5)
-    st.subheader("2) Total de reclamos por estado (Top 5)")
+    # 2) Total de reclamos por estado
     if "Total Claim Amount" in df_filtered.columns and "State" in df_filtered.columns:
         g2 = df_filtered.groupby("State", observed=True)["Total Claim Amount"].sum().sort_values(ascending=False).head(5)
         st.bar_chart(g2)
-    else:
-        st.info("No se encontraron columnas 'Total Claim Amount' y/o 'State'.")
-
-    # 3) Tasa de aceptación por tipo de oferta de renovación
-    st.subheader("3) Tasa de aceptación por tipo de oferta de renovación")
+    # 3) Tasa de aceptación por oferta
     if "Response" in df_filtered.columns and "Renew Offer Type" in df_filtered.columns:
         temp = df_filtered.copy()
         temp["accepted"] = np.where(temp["Response"].astype(str).str.strip().str.lower() == "yes", 1, 0)
-        g3 = temp.groupby("Renew Offer Type", observed=True)["accepted"].mean()
+        g3 = temp.groupby("Renew Offer Type", observed=True)["accepted"].mean().sort_values(ascending=False)
         st.bar_chart(g3)
-    else:
-        st.info("No se encontraron columnas 'Response' y/o 'Renew Offer Type'.")
 
-# ===================== Interfaz =====================
+# ------------------------------
+# Interfaz Streamlit
+# ------------------------------
 st.title("🚗 ChatBot Caso de Estudio (Seguros)")
 st.write("Los **filtros de la izquierda** modifican **solo las 3 gráficas**. Las respuestas de texto usan toda la base.")
 
+# Historial
 if "history" not in st.session_state:
     st.session_state["history"] = []
 
+# Entrada
 user_input = st.text_input("👤 ¿Qué deseas preguntar?")
 
 if user_input:
     intent = predict_intent(user_input)
-    response = f"🤖 Respuesta simulada para intent '{intent}'" if intent else "❓ No entendí tu consulta."
+    if intent:
+        response = faq_generators[intent](df)
+    else:
+        response = "❓ No entendí tu consulta, por favor intenta con otra formulación."
     st.session_state["history"].append((user_input, response))
 
 # Mostrar historial
@@ -248,6 +256,6 @@ for user_msg, bot_msg in st.session_state["history"]:
     st.markdown(f"🤖 **Bot:** {bot_msg}")
     st.divider()
 
-# Mostrar las 3 gráficas
+# Mostrar gráficas con filtros
 df_charts = df_for_charts(df)
 draw_dashboard(df_charts)
